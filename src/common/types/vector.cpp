@@ -451,17 +451,22 @@ void Vector::SetValue(idx_t index, const Value &val) {
 		auto &child = DictionaryVector::Child(*this);
 		return child.SetValue(sel_vector.get_index(index), val);
 	}
+	// C: 既不是 Null 类型也不同就转换类型 Cast
 	if (!val.IsNull() && val.type() != GetType()) {
 		SetValue(index, val.DefaultCastAs(GetType()));
 		return;
 	}
+	// C: 检查类型
 	D_ASSERT(val.IsNull() || (val.type().InternalType() == GetType().InternalType()));
 
+	// C: 设置新值的 Null 属性
 	validity.Set(index, !val.IsNull());
 	auto physical_type = GetType().InternalType();
 	if (val.IsNull() && !IsStructOrArrayRecursive(GetType())) {
 		// for structs and arrays we still need to set the child-entries to NULL
 		// so we do not bail out yet
+		// 对 structs 和 arrays 类型来说，我们还需要将 child-entries 设为 NULL
+		// 所以我们还不能提前返回
 		return;
 	}
 
@@ -514,6 +519,7 @@ void Vector::SetValue(idx_t index, const Value &val) {
 		}
 		break;
 	}
+	// C: 下边都是嵌套类型，所以还需要设置他们的 child-entries 的值
 	case PhysicalType::STRUCT: {
 		D_ASSERT(GetVectorType() == VectorType::CONSTANT_VECTOR || GetVectorType() == VectorType::FLAT_VECTOR);
 
@@ -521,6 +527,7 @@ void Vector::SetValue(idx_t index, const Value &val) {
 		if (val.IsNull()) {
 			for (size_t i = 0; i < children.size(); i++) {
 				auto &vec_child = children[i];
+				// C: 默认构造函数构造出的就是 Null 值
 				vec_child->SetValue(index, Value());
 			}
 		} else {

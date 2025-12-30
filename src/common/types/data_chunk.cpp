@@ -60,13 +60,34 @@ void DataChunk::Initialize(Allocator &allocator, const vector<LogicalType> &type
 		// This is necessary to avoid heavy contention on the atomic on many-core machines
 		// Note that for nested types, there will still be contention on the atomic(s) one level down,
 		// because this is a shallow copy (only copies ExtraTypeInfo to depth=1)
+		// 我们在这里复制该类型，是为了避免创建指向同一个 shared_ptr<ExtraTypeInfo> 的新引用
+		// 否则，各个线程会不断地增加/减少同一个 shared_ptr 的原子引用计数
+		// 在多核机器上，为了避免原子变量上的严重争用（contention），这样做是必须的
+		// 注意：对于嵌套类型，下一层级的原子变量仍然会存在争用，
+		// 因为这是一个浅拷贝（只复制了深度为 1 的 ExtraTypeInfo）
+		// C: 这里是直接复制 *type 了，不会碰到 sptr 的原子变量
 		auto copied_type = types[i].Copy();
+		// Q: 这里有点奇怪，为啥不修改 initialize[i] 应该还需要看上层函数，不过在这里也不影响
+		// A: 是我瞎了 initialize 是 const
 		if (!initialize[i]) {
 			data.emplace_back(copied_type, nullptr);
 			vector_caches.emplace_back();
 			continue;
 		}
 
+		// Q: 为什么已初始化的还需要创建新的 Cache
+		// A: VectorCache 的作用有二：(1) 持有实际分配的内存 buffer；(2) 保存向量的初始状态。
+		//    当 DataChunk::Reset() 被调用时（见98-110行），会通过 data[i].ResetFromCache(vector_caches[i])
+		//    将向量重置为初始状态，而不需要重新分配内存。这是一个重要的性能优化，
+		//    因为 DataChunk 在执行引擎中会被频繁重用。
+		// Q: 为什么上边的没有做 data.emplace_back(cache) 这里要做
+		// A: 因为两种情况下 Vector 的构造方式不同：
+		//    - 上面 (initialize[i]=false)：data.emplace_back(copied_type, nullptr)
+		//      直接用类型和空指针构造，不需要内存，VectorCache 也是空的（占位符）
+		//    - 这里 (initialize[i]=true)：data.emplace_back(cache)
+		//      用 VectorCache 构造 Vector，这会调用 Vector(const VectorCache &cache) 构造函数，
+		//      内部通过 ResetFromCache(cache) 让 Vector 引用 cache 的 buffer。
+		//      然后把 cache move 到 vector_caches 保存，用于后续 Reset() 操作。
 		VectorCache cache(allocator, copied_type, capacity);
 		data.emplace_back(cache);
 		vector_caches.push_back(std::move(cache));
@@ -75,6 +96,7 @@ void DataChunk::Initialize(Allocator &allocator, const vector<LogicalType> &type
 
 idx_t DataChunk::GetAllocationSize() const {
 	idx_t total_size = 0;
+	// C: 这个 cardinality 应该是行数，total size 就是 行数 * 数据类型的大小
 	auto cardinality = size();
 	for (auto &vec : data) {
 		total_size += vec.GetAllocationSize(cardinality);
