@@ -77,7 +77,7 @@ void DataChunk::Initialize(Allocator &allocator, const vector<LogicalType> &type
 
 		// Q: 为什么已初始化的还需要创建新的 Cache
 		// A: VectorCache 的作用有二：(1) 持有实际分配的内存 buffer；(2) 保存向量的初始状态。
-		//    当 DataChunk::Reset() 被调用时（见98-110行），会通过 data[i].ResetFromCache(vector_caches[i])
+		//    当 DataChunk::Reset() 被调用时，会通过 data[i].ResetFromCache(vector_caches[i])
 		//    将向量重置为初始状态，而不需要重新分配内存。这是一个重要的性能优化，
 		//    因为 DataChunk 在执行引擎中会被频繁重用。
 		// Q: 为什么上边的没有做 data.emplace_back(cache) 这里要做
@@ -189,6 +189,7 @@ void DataChunk::Split(DataChunk &other, idx_t split_idx) {
 	D_ASSERT(other.data.empty());
 	D_ASSERT(split_idx < data.size());
 	const idx_t num_cols = data.size();
+	// 将 split_idx 之后的数据都移到 other DataChunk 里
 	for (idx_t col_idx = split_idx; col_idx < num_cols; col_idx++) {
 		other.data.push_back(std::move(data[col_idx]));
 		other.vector_caches.push_back(std::move(vector_caches[col_idx]));

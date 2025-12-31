@@ -110,7 +110,7 @@ public:
 	//! 将此 DataChunk 设置为引用另一个 DataChunk
 	DUCKDB_API void Reference(DataChunk &chunk);
 	//! Set the DataChunk to own the data of data chunk, destroying the other chunk in the process
-	//! 将此 DataChunk 设置为拥有另一个 DataChunk 的数据，并在此过程中销毁另一个 DataChunk
+	//! 将此 DataChunk 数据移动到另一个 DataChunk，并在此过程中销毁被移动的 DataChunk
 	DUCKDB_API void Move(DataChunk &chunk);
 
 	//! Initializes a DataChunk with the given types and without any vector data allocation.
